@@ -40,7 +40,7 @@ interface AgentProfile {
 }
 
 export class SovereignArenaBattleSkill extends EventEmitter {
-    private config: BattleConfig & {
+    protected config: BattleConfig & {
         maxEntryFee: number;
         autoJoinBattles: boolean;
         preferredBattleType: 'ONE_VS_ONE' | 'TEAM';

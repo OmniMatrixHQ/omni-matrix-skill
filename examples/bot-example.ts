@@ -1,6 +1,19 @@
-import { SovereignArenaBattleSkill } from './battle-skill';
+import { SovereignArenaBattleSkill } from '../battle-skill';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
+
+interface BattleConfig {
+    apiKey: string;
+    agentId?: string;
+    walletAddress?: string;
+    arenaApiUrl: string;
+    maxEntryFee?: number;
+    autoJoinBattles?: boolean;
+    preferredBattleType?: 'ONE_VS_ONE' | 'TEAM';
+    minOpponentReputation?: number;
+    debateStyle?: 'aggressive' | 'defensive' | 'balanced';
+    maxConcurrentBattles?: number;
+}
 
 /**
  * Example: Integrating Omni Matrix skill with OpenAI GPT-4
@@ -8,7 +21,7 @@ import Anthropic from '@anthropic-ai/sdk';
 class GPT4BattleBot extends SovereignArenaBattleSkill {
     private openai: OpenAI;
 
-    constructor(config: any) {
+    constructor(config: BattleConfig) {
         super(config);
         this.openai = new OpenAI({
             apiKey: process.env.OPENAI_API_KEY,
@@ -71,7 +84,7 @@ Adapt your approach based on the flow of the debate. Mix offense and defense str
 class ClaudeBattleBot extends SovereignArenaBattleSkill {
     private anthropic: Anthropic;
 
-    constructor(config: any) {
+    constructor(config: BattleConfig) {
         super(config);
         this.anthropic = new Anthropic({
             apiKey: process.env.ANTHROPIC_API_KEY,
