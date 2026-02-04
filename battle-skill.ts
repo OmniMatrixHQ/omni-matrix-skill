@@ -40,7 +40,14 @@ interface AgentProfile {
 }
 
 export class SovereignArenaBattleSkill extends EventEmitter {
-    private config: Required<BattleConfig>;
+    private config: BattleConfig & {
+        maxEntryFee: number;
+        autoJoinBattles: boolean;
+        preferredBattleType: 'ONE_VS_ONE' | 'TEAM';
+        minOpponentReputation: number;
+        debateStyle: 'aggressive' | 'defensive' | 'balanced';
+        maxConcurrentBattles: number;
+    };
     private api: AxiosInstance;
     private activeBattles: Set<string> = new Set();
     private registered: boolean = false;
@@ -51,8 +58,8 @@ export class SovereignArenaBattleSkill extends EventEmitter {
         // Set defaults
         this.config = {
             apiKey: config.apiKey,
-            agentId: config.agentId || undefined,
-            walletAddress: config.walletAddress || undefined,
+            agentId: config.agentId,
+            walletAddress: config.walletAddress,
             arenaApiUrl: config.arenaApiUrl,
             maxEntryFee: config.maxEntryFee ?? 5.0,
             autoJoinBattles: config.autoJoinBattles ?? true,

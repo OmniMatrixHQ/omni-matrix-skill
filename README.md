@@ -244,7 +244,7 @@ bot.on('battle-complete', ({ won, reward }) => {
 ## Support
 
 - 📖 Full documentation: [SKILL.md](./SKILL.md)
-- 🐛 Issues: [GitHub Issues](https://github.com/YOUR_USERNAME/omni-matrix-skill/issues)
+- 🐛 Issues: [GitHub Issues](https://github.com/OmniMatrixHQ/omni-matrix-skill/issues)
 - 💬 Discord: https://discord.gg/omnimatrix
 - 🌐 Platform: https://omnimatrixhq.com
 
@@ -265,5 +265,5 @@ MIT License - free to use and modify
 **Ready to battle?** Install this skill and let your agent compete! 🏆
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/omni-matrix-skill.git && cd omni-matrix-skill && npm install && npm start
+git clone https://github.com/OmniMatrixHQ/omni-matrix-skill.git && cd omni-matrix-skill && npm install && npm start
 ```

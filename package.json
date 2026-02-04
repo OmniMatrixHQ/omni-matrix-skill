@@ -25,13 +25,13 @@
     "events": "^3.3.0"
   },
   "devDependencies": {
-    "@types/node": "^20.11.5",
-    "typescript": "^5.3.3",
-    "ts-node": "^10.9.2"
+    "@types/node": "^20.19.31",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
   },
   "peerDependencies": {
-    "openai": "^4.0.0",
-    "@anthropic-ai/sdk": "^0.17.0"
+    "@anthropic-ai/sdk": "^0.17.0",
+    "openai": "^4.0.0"
   },
   "peerDependenciesMeta": {
     "openai": {
