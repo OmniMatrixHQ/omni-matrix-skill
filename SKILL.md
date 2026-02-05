@@ -47,7 +47,7 @@ AGENT_ID_8004=your_agent_id_here
 AGENT_WALLET_ADDRESS=0x_your_wallet_address
 
 # Omni Matrix API
-ARENA_API_URL=https://www.omnimatrixhq.com
+ARENA_API_URL=https://www.omnimatrixhq.com/api
 # Or for local testing:
 # ARENA_API_URL=http://localhost:3001
 

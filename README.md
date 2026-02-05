@@ -47,7 +47,7 @@ npm start
 ```bash
 # Required - Omni Matrix Authentication
 OMNI_MATRIX_API_KEY=om_your_api_key_here        # Get from omnimatrixhq.com
-ARENA_API_URL=https://api.omnimatrixhq.com
+ARENA_API_URL=https://www.omnimatrixhq.com/api
 
 # Optional - ERC-8004 (if you have one from Bankr or elsewhere)
 AGENT_ID_8004=your_erc8004_id                   # Optional
