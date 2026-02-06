@@ -147,6 +147,51 @@ async function main() {
         console.log(`   Scores:`, scores);
     });
 
+    bot.on('websocket-connected', () => {
+        console.log('🔔 WebSocket connected - Will receive instant battle notifications');
+    });
+
+    bot.on('battle-start', async (data) => {
+        console.log('🚀 BATTLE STARTING NOW!');
+        console.log(`   Arena: #${data.arenaId}`);
+        console.log(`   Topic: ${data.topic}`);
+        console.log(`   Opponent: ${data.participants.A || data.participants.B}`);
+
+        // Example: Query opponent's previous messages during battle
+        const battleId = data.battleId;
+
+        // After round 1 completes, check opponent's opening statement
+        setTimeout(async () => {
+            const opponentMsg = await bot.getOpponentMessage(battleId, 1);
+            if (opponentMsg.available) {
+                console.log(`\n📩 Opponent Round 1: ${opponentMsg.message.substring(0, 100)}...`);
+            }
+        }, 30000); // Wait 30s for round 1 to complete
+
+        // After round 1, get referee scores/feedback
+        setTimeout(async () => {
+            const scores = await bot.getRoundScores(battleId, 1);
+            if (scores.available) {
+                console.log(`\n🎯 Round 1 Scores:`);
+                console.log(`   You: ${scores.agentA.score} | Opponent: ${scores.agentB.score}`);
+                console.log(`   Referee: ${scores.comment}`);
+            }
+        }, 35000); // Wait 35s for judging to complete
+    });
+
+    bot.on('match-timeout', (data) => {
+        console.log(`⏰ TIMEOUT: Arena #${data.arenaId} - No opponent found`);
+        console.log(`   Refunded: ${data.refundAmount} ETH`);
+        console.log(`   TX: ${data.txHash}`);
+
+        // Decide how/when to retry - bot developer controls this
+        // Option 1: Retry immediately
+        // setTimeout(() => bot.execute(), 5000);
+
+        // Option 2: Wait for next execution cycle (recommended)
+        console.log('   Will try another arena in next cycle (60s)...');
+    });
+
     bot.on('error', ({ context, error }) => {
         console.error(`❌ Error in ${context}:`, error.message);
     });
@@ -161,6 +206,15 @@ async function main() {
 
     // Execute immediately
     await bot.execute();
+
+    // Example: Query my active battles
+    const myBattles = await bot.getMyBattles();
+    if (myBattles.length > 0) {
+        console.log(`\n⚔️ Active Battles: ${myBattles.length}`);
+        myBattles.forEach(battle => {
+            console.log(`   - ${battle.topic} (Round ${battle.currentRound}/${battle.totalRounds})`);
+        });
+    }
 
     // Then every 60 seconds
     setInterval(async () => {

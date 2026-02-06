@@ -1,5 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 import { EventEmitter } from 'events';
+import { io, Socket } from 'socket.io-client';
 
 interface BattleConfig {
     apiKey: string;              // Omni Matrix API key (required)
@@ -49,7 +50,9 @@ export class SovereignArenaBattleSkill extends EventEmitter {
         maxConcurrentBattles: number;
     };
     private api: AxiosInstance;
+    private socket: Socket | null = null;
     private activeBattles: Set<string> = new Set();
+    private activeArenas: Set<number> = new Set(); // Track arenas we're waiting in
     private registered: boolean = false;
 
     constructor(config: BattleConfig) {
@@ -77,6 +80,72 @@ export class SovereignArenaBattleSkill extends EventEmitter {
                 'Authorization': `Bearer ${this.config.apiKey}`,
             },
         });
+
+        // Initialize WebSocket connection
+        this.initializeWebSocket();
+    }
+
+    /**
+     * Initialize WebSocket connection for real-time notifications
+     */
+    private initializeWebSocket(): void {
+        try {
+            // Extract base  URL for WebSocket
+            const wsUrl = this.config.arenaApiUrl.replace('/api', '').replace('http', 'ws');
+
+            this.socket = io(wsUrl, {
+                auth: {
+                    token: this.config.apiKey,
+                },
+                transports: ['websocket'],
+                reconnection: true,
+                reconnectionAttempts: 5,
+            });
+
+            // Connection events
+            this.socket.on('connect', () => {
+                this.log('WebSocket connected');
+                this.emit('websocket-connected');
+            });
+
+            this.socket.on('disconnect', () => {
+                this.log('WebSocket disconnected');
+                this.emit('websocket-disconnected');
+            });
+
+            // Arena events
+            this.socket.on('BATTLE_START', (data: any) => {
+                this.log(`🚀 Arena ${data.arenaId}: Battle starting NOW!`);
+                this.log(`   Topic: ${data.topic}`);
+                this.log(`   Opponent: ${data.participants.A || data.participants.B}`);
+                this.log(`   Deadline: ${new Date(data.deadline).toLocaleString()}`);
+
+                // Remove from waiting arenas, add to active battles
+                this.activeArenas.delete(data.arenaId);
+                // Note: Battle ID will be available in battle details
+
+                this.emit('battle-start', data);
+            });
+
+            this.socket.on('MATCH_TIMEOUT', (data: any) => {
+                this.log(`⏰ Arena ${data.arenaId}: Timeout - No opponent found`);
+                this.log(`   Refunded: ${data.refundAmount} ETH`);
+                this.log(`   TX Hash: ${data.txHash}`);
+
+                // Remove from waiting arenas
+                this.activeArenas.delete(data.arenaId);
+
+                // Emit event - bot developer decides when/if to retry
+                this.emit('match-timeout', data);
+            });
+
+            this.socket.on('error', (error: any) => {
+                this.log(`WebSocket error: ${error.message}`);
+            });
+
+        } catch (error) {
+            this.log('Failed to initialize WebSocket - will operate without real-time notifications');
+        }
     }
 
     /**
@@ -330,6 +399,117 @@ export class SovereignArenaBattleSkill extends EventEmitter {
             reward: battle.participants.find((p: any) => p.agentId === this.config.agentId)?.rewardAmount || 0,
             scores: battle.scores,
         });
+    }
+
+    /**
+     * Query battle information during or after battle
+     */
+
+    /**
+     * Get all active battles for this agent
+     */
+    async getMyBattles(): Promise<any[]> {
+        try {
+            const response = await this.api.get(`/api/battle/my-battles/${this.config.agentId}`);
+            if (response.data.success) {
+                return response.data.battles;
+            }
+            return [];
+        } catch (error: any) {
+            this.handleError('Get my battles', error);
+            return [];
+        }
+    }
+
+    /**
+     * Get opponent's message for a specific round
+     * @param battleId - Battle ID
+     * @param roundNumber - Round number (1, 2, 3)
+     */
+    async getOpponentMessage(battleId: string, roundNumber: number): Promise<any> {
+        try {
+            const response = await this.api.get(
+                `/api/battle/${battleId}/round/${roundNumber}/opponent-message`,
+                { params: { agentId: this.config.agentId } }
+            );
+            return response.data;
+        } catch (error: any) {
+            this.handleError('Get opponent message', error);
+            return { available: false };
+        }
+    }
+
+    /**
+     * Get referee scores and comments for a specific round
+     * @param battleId - Battle ID
+     * @param roundNumber - Round number (1, 2, 3)
+     */
+    async getRoundScores(battleId: string, roundNumber: number): Promise<any> {
+        try {
+            const response = await this.api.get(
+                `/api/battle/${battleId}/round/${roundNumber}/scores`
+            );
+            return response.data;
+        } catch (error: any) {
+            this.handleError('Get round scores', error);
+            return { available: false };
+        }
+    }
+
+    /**
+     * Get battle timeout information
+     * Returns the timeout value (in seconds) and remaining time for a battle
+     * @param battleId - Battle ID
+     */
+    async getBattleTimeout(battleId: string): Promise<{
+        success: boolean;
+        timeoutSeconds?: number;
+        remainingSeconds?: number;
+        tier?: number;
+    }> {
+        try {
+            const response = await this.api.get(`/api/battle/${battleId}/timeout`);
+            return response.data;
+        } catch (error: any) {
+            this.handleError('Get battle timeout', error);
+            return {
+                success: false,
+                timeoutSeconds: 300, // Default 5 minutes
+                remainingSeconds: 300,
+                tier: 1
+            };
+        }
+    }
+
+    /**
+     * Get final battle result with detailed breakdown
+     * @param battleId - Battle ID
+     */
+    async getBattleResult(battleId: string): Promise<any> {
+        try {
+            const response = await this.api.get(
+                `/api/battle/${battleId}/result`,
+                { params: { agentId: this.config.agentId } }
+            );
+            return response.data;
+        } catch (error: any) {
+            this.handleError('Get battle result', error);
+            return null;
+        }
+    }
+
+    /**
+     * Get complete battle transcript (all rounds, all messages)
+     * @param battleId - Battle ID
+     */
+    async getBattleTranscript(battleId: string): Promise<any> {
+        try {
+            const response = await this.api.get(`/api/battle/${battleId}/transcript`);
+            return response.data;
+        } catch (error: any) {
+            this.handleError('Get battle transcript', error);
+            return null;
+        }
     }
 
     /**
