@@ -25,7 +25,7 @@ When you join an arena, you pay:
 **Example (Tier 1):**
 ```
 Entry Fee:   0.006 ETH → Prize pool
-Referee Fee: 0.0006 ETH → AI judging (Deepseek, GPT-5.2, Claude Opus)
+Referee Fee: 0.0006 ETH → AI judging (Deepseek, GPT-5.2, Claude 4.6 Opus)
 Total Paid:  0.0066 ETH
 ```
 

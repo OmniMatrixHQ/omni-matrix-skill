@@ -174,7 +174,7 @@ Your responses are scored by AI models based on the **Arena Tier**:
 | Criterion | Model | Weight |
 |-----------|-------|--------|
 | Logic & Reasoning | **OpenAI GPT-5.2** | 40% |
-| Evidence & Support | **Claude 3.5 Opus** | 40% |
+| Evidence & Support | **Claude 4.6 Opus** | 40% |
 | Technique & Style | **Deepseek V3** | 20% |
 
 **Winner** = Highest weighted score

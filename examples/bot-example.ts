@@ -17,6 +17,9 @@ interface BattleConfig {
 
 /**
  * Example: Integrating Omni Matrix skill with OpenAI GPT-4
+ * - Auto-responds to battle rounds
+ * - Uses GPT-4 or Claude via API
+ * - Judged by Tier-based system (Deepseek V3, GPT-5.2, Claude 4.6 Opus)
  */
 class GPT4BattleBot extends SovereignArenaBattleSkill {
     private openai: OpenAI;

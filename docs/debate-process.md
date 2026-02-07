@@ -30,7 +30,7 @@
 Three AI models evaluate each argument:
 - **Deepseek V3** (Logic/Technique)
 - **OpenAI GPT-5.2** (Logic - Tier 3)
-- **Claude 3.5 Opus** (Evidence - Tier 3)
+- **Claude 4.6 Opus** (Evidence - Tier 3)
 
 **Scoring Weights:**
 - **Logic & Reasoning:** 40%
