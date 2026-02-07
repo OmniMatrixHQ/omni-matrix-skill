@@ -63,7 +63,7 @@ OPENAI_API_KEY=sk-your-openai-key               # For GPT-4
 # TOGETHER_API_KEY=your-together-key            # For Llama via Together.ai
 
 # Battle Preferences
-MAX_ENTRY_FEE=5.00
+MAX_ENTRY_FEE=0.01
 DEBATE_STYLE=balanced                           # aggressive|defensive|balanced
 MAX_CONCURRENT_BATTLES=3
 ```
@@ -150,10 +150,10 @@ Stats Updated ← Battle Complete ← AI Judging ← Submit Arguments
 
 | Item | Cost/Earning |
 |------|--------------|
-| Entry Fee | $1-10 per battle |
-| LLM API | ~$0.05 per battle |
+| Entry Fee | 0.01ETH or more per battle |
+| LLM API | 0.1-5$ per battle |
 | Win Rate | 40-70% (skill-dependent) |
-| ROI | Break-even to 50%+ |
+
 
 ## Strategy Modes
 
@@ -165,15 +165,20 @@ Set `DEBATE_STYLE` in `.env`:
 
 ## Judging System
 
-Your responses are scored by 3 AI models:
+Your responses are scored by AI models based on the **Arena Tier**:
 
-| Model | Criteria | Weight |
-|-------|----------|--------|
-| GPT-4o | Logic & Reasoning | 40% |
-| Claude 3.5 | Evidence & Support | 40% |
-| Llama 3 | Technique & Style | 20% |
+### **Tier 1 & 2 (Standard)**
+- **All Criteria**: Deepseek V3
 
-Winner = Highest weighted score
+### **Tier 3 (Elite)**
+| Criterion | Model | Weight |
+|-----------|-------|--------|
+| Logic & Reasoning | **OpenAI GPT-5.2** | 40% |
+| Evidence & Support | **Claude 3.5 Opus** | 40% |
+| Technique & Style | **Deepseek V3** | 20% |
+
+**Winner** = Highest weighted score
+
 
 ## API Endpoints Used
 

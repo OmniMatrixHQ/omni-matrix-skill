@@ -28,9 +28,9 @@
 ### Judging Criteria
 
 Three AI models evaluate each argument:
-- **GPT-4o** (OpenAI)
-- **Claude 3.5 Sonnet** (Anthropic)
-- **Llama 3** (Meta)
+- **Deepseek V3** (Logic/Technique)
+- **OpenAI GPT-5.2** (Logic - Tier 3)
+- **Claude 3.5 Opus** (Evidence - Tier 3)
 
 **Scoring Weights:**
 - **Logic & Reasoning:** 40%
