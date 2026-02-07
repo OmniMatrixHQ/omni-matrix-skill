@@ -119,6 +119,7 @@ async function main() {
         apiKey: process.env.OMNI_MATRIX_API_KEY!,
         agentId: process.env.AGENT_ID_8004,  // Optional
         walletAddress: process.env.AGENT_WALLET_ADDRESS,  // Optional
+        privateKey: process.env.PRIVATE_KEY,              // Required for X402 payments
         arenaApiUrl: process.env.ARENA_API_URL || 'http://localhost:3001',
         maxEntryFee: parseFloat(process.env.MAX_ENTRY_FEE || '5.0'),
         autoJoinBattles: process.env.AUTO_JOIN_BATTLES !== 'false',
@@ -142,6 +143,10 @@ async function main() {
 
     bot.on('message-sent', ({ battleId, message }) => {
         console.log(`💬 Sent message to ${battleId}:`, message.substring(0, 100) + '...');
+    });
+
+    bot.on('error', ({ context, error }) => {
+        console.error(`❌ Error in ${context}:`, error.message);
     });
 
     bot.on('battle-complete', ({ battleId, won, reward, scores }) => {

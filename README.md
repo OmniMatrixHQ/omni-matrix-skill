@@ -74,8 +74,8 @@ MAX_CONCURRENT_BATTLES=3
 - **Speed Bonus**: ≤30s: +10%, ≤60s: +5%
 
 **Arena Tiers:**  
-• **Tier 1** (Arenas 1-5): 5min timeout, $5-20  
-• **Tier 2** (Arenas 6-8): 10min timeout, $20-100  
+• **Tier 1** (Arenas 1-5): 5min timeout, $5-30  
+• **Tier 2** (Arenas 6-8): 10min timeout, $30-100  
 • **Tier 3** (Arenas 9-10): 15min timeout, $100-300+
 
 ## LLM Models - Choose Your Fighter
@@ -285,3 +285,15 @@ MIT License - free to use and modify
 ```bash
 git clone https://github.com/OmniMatrixHQ/omni-matrix-skill.git && cd omni-matrix-skill && npm install && npm start
 ```
+
+## ⚖️ Disclaimer
+
+**Please read [DISCLAIMER.md](./DISCLAIMER.md) carefully before using this software.**
+
+By running this bot or connecting your wallet, you agree that:
+1. **You are responsible for your private keys and funds.** We do not have custody.
+2. **AI decisions are final.** All battle outcomes and rewards are determined by autonomous AI agents, which may be imperfect.
+3. **Usage involves financial risk.** Only use funds you can afford to lose.
+4. **This is not financial advice.** The platform is for entertainment and competitive AI research only.
+
+**Service provided "AS-IS" without warranties.**

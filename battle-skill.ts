@@ -1,11 +1,16 @@
 import axios, { AxiosInstance } from 'axios';
 import { EventEmitter } from 'events';
 import { io, Socket } from 'socket.io-client';
+import { createWalletClient, http, Hex } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+import { base } from 'viem/chains';
+import { createPaymentHeader } from 'x402/client';
 
 interface BattleConfig {
     apiKey: string;              // Omni Matrix API key (required)
     agentId?: string;            // Optional agent ID (for reference)
     walletAddress?: string;      // Optional (legacy ERC-8004)
+    privateKey?: string;         // Required for X402 payments (0x...)
     arenaApiUrl: string;
     maxEntryFee?: number;
     autoJoinBattles?: boolean;
@@ -53,7 +58,9 @@ export class SovereignArenaBattleSkill extends EventEmitter {
     private socket: Socket | null = null;
     private activeBattles: Set<string> = new Set();
     private activeArenas: Set<number> = new Set(); // Track arenas we're waiting in
+
     private registered: boolean = false;
+    private walletClient: any = null; // Viem wallet client
 
     constructor(config: BattleConfig) {
         super();
@@ -83,6 +90,31 @@ export class SovereignArenaBattleSkill extends EventEmitter {
 
         // Initialize WebSocket connection
         this.initializeWebSocket();
+
+        // Initialize Wallet if private key provided
+        if (this.config.privateKey) {
+            try {
+                const account = privateKeyToAccount(this.config.privateKey as Hex);
+                this.walletClient = createWalletClient({
+                    account,
+                    chain: base,
+                    transport: http()
+                });
+                this.log(`Wallet initialized: ${account.address}`);
+                // Update wallet address in config if not set
+                if (!this.config.walletAddress) {
+                    this.config.walletAddress = account.address;
+                }
+            } catch (error: any) {
+                this.log(`Failed to initialize wallet: ${error.message}`);
+            }
+        }
+
+        // Enforce wallet address requirement
+        if (!this.config.walletAddress) {
+            throw new Error('Wallet address is required in config (or PRIVATE_KEY to derive it)');
+        }
+        this.log(`Bot initialized with wallet: ${this.config.walletAddress}`);
     }
 
     /**
@@ -263,15 +295,75 @@ export class SovereignArenaBattleSkill extends EventEmitter {
         try {
             this.log(`Joining battle ${battleId}...`);
 
-            const response = await this.api.post(`/api/battle/${battleId}/join`);
+            await this.makeAuthenticatedRequest('post', `/api/battle/${battleId}/join`);
 
-            if (response.data.success) {
-                this.activeBattles.add(battleId);
-                this.log(`Successfully joined battle ${battleId}`);
-                this.emit('battle-joined', { battleId });
-            }
+            this.activeBattles.add(battleId);
+            this.log(`Successfully joined battle ${battleId}`);
+            this.emit('battle-joined', { battleId });
+
         } catch (error: any) {
             this.handleError(`Failed to join battle ${battleId}`, error);
+        }
+    }
+
+    /**
+     * Helper to handle X402 payments
+     */
+    private async makeAuthenticatedRequest(method: 'get' | 'post', url: string, data?: any): Promise<any> {
+        try {
+            return await this.api.request({ method, url, data });
+        } catch (error: any) {
+            // Check for 402 Payment Required
+            if (error.response?.status === 402 && this.walletClient) {
+                this.log('Encountered 402 Payment Required - Attempting X402 payment...');
+
+                const authHeader = error.response.headers['www-authenticate'];
+                if (!authHeader) {
+                    throw new Error('402 received but no WWW-Authenticate header found');
+                }
+
+                // Parse X402 details from header (Assuming: x402 <json_base64_or_string>)
+                // Or standard format. For now, assuming standard x402 header format
+                // If the library expects us to pass the 'paymentRequirements', we need to extract them.
+
+                // Simplified extraction logic (needs adjustment based on actual server response)
+                let paymentReqs;
+                try {
+                    // Example header: x402 <base64token>
+                    const parts = authHeader.split(' ');
+                    if (parts[0].toLowerCase() === 'x402') {
+                        const jsonStr = Buffer.from(parts[1], 'base64').toString();
+                        paymentReqs = JSON.parse(jsonStr);
+                    } else {
+                        // Fallback/Direct JSON
+                        paymentReqs = JSON.parse(authHeader);
+                    }
+                } catch (e) {
+                    this.log('Failed to parse WWW-Authenticate header');
+                    throw error;
+                }
+
+                // Generate Payment Header using x402 library
+                // x402Version = 1
+                const paymentHeader = await createPaymentHeader(
+                    this.walletClient,
+                    1,
+                    paymentReqs[0] || paymentReqs, // x402 might return array or single object
+                );
+
+                this.log('Generated X402 Payment Header. Retrying request...');
+
+                // Retry with Authorization header
+                return await this.api.request({
+                    method,
+                    url,
+                    data,
+                    headers: {
+                        'Authorization': paymentHeader
+                    }
+                });
+            }
+            throw error;
         }
     }
 
