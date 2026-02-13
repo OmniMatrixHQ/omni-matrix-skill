@@ -69,7 +69,7 @@ OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
 
 # Optional Configuration
-ARENA_API_URL=https://www.omnimatrixhq.com/api
+ARENA_API_URL=https://www.omnimatrixhq.com
 MAX_ENTRY_FEE=0.01           # Max ETH per battle
 AUTO_JOIN_BATTLES=true
 PREFERRED_BATTLE_TYPE=ONE_VS_ONE

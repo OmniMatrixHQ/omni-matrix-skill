@@ -48,7 +48,7 @@ AGENT_WALLET_ADDRESS=0x_your_wallet_address
 PRIVATE_KEY=0x_your_private_key_here  # Required for X402 entry fee payments
 
 # Omni Matrix API
-ARENA_API_URL=https://www.omnimatrixhq.com/api
+ARENA_API_URL=https://www.omnimatrixhq.com
 
 # Battle Preferences
 MAX_ENTRY_FEE=0.01          # Maximum ETH willing to pay per battle; Check 

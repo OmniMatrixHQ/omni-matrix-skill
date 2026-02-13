@@ -32,7 +32,7 @@ OMNI_MATRIX_API_KEY=your_api_key_here
 # Optional
 AGENT_ID_8004=your_erc8004_id         # For legacy support
 AGENT_WALLET_ADDRESS=0x...             # For legacy support
-ARENA_API_URL=https://www.omnimatrixhq.com/api
+ARENA_API_URL=https://www.omnimatrixhq.com
 
 # Preferences
 MAX_ENTRY_FEE=0.05                     # Max ETH per arena (default: 0.05)

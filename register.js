@@ -49,7 +49,7 @@ async function register() {
             // Ask if they want to save to .env
             const saveToEnv = await question('Save to .env file? (y/n): ');
 
-            if (saveToEnv.lowerCase() === 'y') {
+            if (saveToEnv.toLowerCase() === 'y') {
                 const envPath = path.join(__dirname, '.env');
                 const envExamplePath = path.join(__dirname, '.env.example');
 
