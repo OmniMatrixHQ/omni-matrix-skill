@@ -30,6 +30,16 @@ interface Battle {
     createdAt: string;
 }
 
+interface Arena {
+    id: number;
+    topic: string;
+    status: 'WAITING' | 'READY' | 'ACTIVE' | 'JUDGING' | 'REFUNDING';
+    agentA: string | null;
+    agentB: string | null;
+    entryFee: number;
+    battleId: string | null;
+}
+
 interface BattleMessage {
     agentId: string;
     message: string;
@@ -198,7 +208,7 @@ export class SovereignArenaBattleSkill extends EventEmitter {
 
             // Find and join suitable battles
             if (this.config.autoJoinBattles) {
-                await this.findAndJoinBattle();
+                await this.findAndJoinArena();
             }
 
             // Process active battles (submit messages if needed)
@@ -245,64 +255,74 @@ export class SovereignArenaBattleSkill extends EventEmitter {
     }
 
     /**
-     * Find available battles and join suitable ones
+     * Discover available arenas and join a suitable one
      */
-    private async findAndJoinBattle(): Promise<void> {
-        // Get active battles
-        const response = await this.api.get('/api/battle/list/active');
-        if (!response.data.success) {
-            return;
-        }
-
-        const battles: Battle[] = response.data.battles;
-
-        // Filter suitable battles
-        const suitableBattles = battles.filter(battle => {
-            // Check entry fee
-            if (battle.entryFee > this.config.maxEntryFee) {
-                return false;
+    private async findAndJoinArena(): Promise<void> {
+        try {
+            // Get all arenas
+            const response = await this.api.get('/api/arena/list');
+            if (!response.data.success) {
+                return;
             }
 
-            // Check battle type preference
-            if (battle.type !== this.config.preferredBattleType) {
-                return false;
+            const arenas: Arena[] = response.data.arenas;
+
+            // Filter suitable arenas
+            const suitableArenas = arenas.filter(arena => {
+                // Check entry fee
+                if (arena.entryFee > this.config.maxEntryFee) {
+                    return false;
+                }
+
+                // Only join WAITING arenas (one agent waiting) or empty arenas
+                if (arena.status !== 'WAITING' && arena.agentA !== null) {
+                    return false;
+                }
+
+                // Check if we're already in this arena
+                if (this.activeBattles.has(`arena-${arena.id}`)) {
+                    return false;
+                }
+
+                return true;
+            });
+
+            // Join the first suitable arena
+            if (suitableArenas.length > 0) {
+                const arena = suitableArenas[0];
+                await this.joinArena(arena.id);
+            } else {
+                this.log('No suitable arenas available at the moment.');
             }
-
-            // Check if already in this battle
-            if (this.activeBattles.has(battle.id)) {
-                return false;
-            }
-
-            // Check if battle is still open
-            if (battle.status !== 'PENDING') {
-                return false;
-            }
-
-            return true;
-        });
-
-        // Join the first suitable battle
-        if (suitableBattles.length > 0) {
-            const battle = suitableBattles[0];
-            await this.joinBattle(battle.id);
+        } catch (error: any) {
+            this.handleError('Failed to discover arenas', error);
         }
     }
 
     /**
-     * Join a specific battle
+     * Join a specific arena
      */
-    private async joinBattle(battleId: string): Promise<void> {
+    private async joinArena(arenaId: number): Promise<void> {
         try {
-            this.log(`Joining battle ${battleId}...`);
+            this.log(`Joining arena ${arenaId}...`);
 
-            await this.makeAuthenticatedRequest('post', `/api/battle/${battleId}/join`);
+            const result = await this.makeAuthenticatedRequest('post', `/api/arena/${arenaId}/join`);
 
-            this.activeBattles.add(battleId);
-            this.log(`Successfully joined battle ${battleId}`);
-            this.emit('battle-joined', { battleId });
+            // Track this arena as active
+            this.activeBattles.add(`arena-${arenaId}`);
+
+            if (result.data.status === 'WAITING') {
+                this.log(`✅ Joined arena ${arenaId} as first player. Waiting for opponent...`);
+                this.log(`⏰ Match timeout: ${result.data.timeoutMinutes} minutes`);
+                this.emit('arena-joined', { arenaId, position: result.data.position, status: 'WAITING' });
+            } else if (result.data.status === 'READY') {
+                this.log(`✅ Joined arena ${arenaId} as second player. Battle starting!`);
+                this.emit('arena-joined', { arenaId, position: result.data.position, status: 'READY' });
+                // Battle will start via BATTLE_START WebSocket event
+            }
 
         } catch (error: any) {
-            this.handleError(`Failed to join battle ${battleId}`, error);
+            this.handleError(`Failed to join arena ${arenaId}`, error);
         }
     }
 
