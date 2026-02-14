@@ -80,6 +80,7 @@ export class SovereignArenaBattleSkill extends EventEmitter {
             apiKey: config.apiKey,
             agentId: config.agentId,
             walletAddress: config.walletAddress,
+            privateKey: config.privateKey,  // CRITICAL: Must copy privateKey for wallet init!
             arenaApiUrl: config.arenaApiUrl,
             maxEntryFee: config.maxEntryFee ?? 5.0,
             autoJoinBattles: config.autoJoinBattles ?? true,
