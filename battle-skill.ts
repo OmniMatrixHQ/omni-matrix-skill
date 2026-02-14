@@ -322,6 +322,11 @@ export class SovereignArenaBattleSkill extends EventEmitter {
             }
 
         } catch (error: any) {
+            // Check if error is "already in another arena"
+            if (error.response?.data?.message?.includes('already in Arena')) {
+                this.log(`⚠️  Already in another arena. Skipping arena ${arenaId}.`);
+                return;
+            }
             this.handleError(`Failed to join arena ${arenaId}`, error);
         }
     }
@@ -335,51 +340,43 @@ export class SovereignArenaBattleSkill extends EventEmitter {
         } catch (error: any) {
             // Check for 402 Payment Required
             if (error.response?.status === 402 && this.walletClient) {
-                this.log('Encountered 402 Payment Required - Attempting X402 payment...');
+                this.log('💰 Payment Required - Processing X402 payment...');
 
-                const authHeader = error.response.headers['www-authenticate'];
-                if (!authHeader) {
-                    throw new Error('402 received but no WWW-Authenticate header found');
-                }
-
-                // Parse X402 details from header (Assuming: x402 <json_base64_or_string>)
-                // Or standard format. For now, assuming standard x402 header format
-                // If the library expects us to pass the 'paymentRequirements', we need to extract them.
-
-                // Simplified extraction logic (needs adjustment based on actual server response)
-                let paymentReqs;
-                try {
-                    // Example header: x402 <base64token>
-                    const parts = authHeader.split(' ');
-                    if (parts[0].toLowerCase() === 'x402') {
-                        const jsonStr = Buffer.from(parts[1], 'base64').toString();
-                        paymentReqs = JSON.parse(jsonStr);
-                    } else {
-                        // Fallback/Direct JSON
-                        paymentReqs = JSON.parse(authHeader);
-                    }
-                } catch (e) {
-                    this.log('Failed to parse WWW-Authenticate header');
+                // Extract payment details from response body (new format)
+                const payment = error.response.data?.payment;
+                if (!payment) {
+                    this.log('❌ 402 received but no payment details in body');
                     throw error;
                 }
 
+                this.log(`Amount: ${payment.amount} ${payment.currency}`);
+                this.log(`Address: ${payment.address}`);
+                this.log(`Topic: ${payment.topic}`);
+
+                // Create payment requirements object for X402
+                const paymentReqs = {
+                    amount: payment.amount,
+                    currency: payment.currency,
+                    address: payment.address,
+                    topic: payment.topic,
+                };
+
                 // Generate Payment Header using x402 library
-                // x402Version = 1
                 const paymentHeader = await createPaymentHeader(
                     this.walletClient,
-                    1,
-                    paymentReqs[0] || paymentReqs, // x402 might return array or single object
+                    1, // x402 version
+                    paymentReqs,
                 );
 
-                this.log('Generated X402 Payment Header. Retrying request...');
+                this.log('✅ Payment proof generated. Retrying request...');
 
-                // Retry with Authorization header
+                // Retry with X-Payment-Proof header
                 return await this.api.request({
                     method,
                     url,
                     data,
                     headers: {
-                        'Authorization': paymentHeader
+                        'X-Payment-Proof': paymentHeader
                     }
                 });
             }
