@@ -4,7 +4,9 @@ import { io, Socket } from 'socket.io-client';
 import { createWalletClient, http, Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { base } from 'viem/chains';
-import { createPaymentHeader } from 'x402/client';
+import { x402Client, x402HTTPClient } from '@x402/core/client';
+import { registerExactEvmScheme } from '@x402/evm/exact/client';
+import { toClientEvmSigner } from '@x402/evm';
 
 interface BattleConfig {
     apiKey: string;              // Omni Matrix API key (required)
@@ -71,6 +73,7 @@ export class SovereignArenaBattleSkill extends EventEmitter {
 
     private registered: boolean = false;
     private walletClient: any = null; // Viem wallet client
+    private x402http: x402HTTPClient | null = null; // X402 HTTP client for payments
 
     constructor(config: BattleConfig) {
         super();
@@ -112,6 +115,14 @@ export class SovereignArenaBattleSkill extends EventEmitter {
                     transport: http()
                 });
                 this.log(`Wallet initialized: ${account.address}`);
+
+                // Initialize x402 HTTP client with EVM support
+                const signer = toClientEvmSigner(account);
+                const x402core = new x402Client();
+                registerExactEvmScheme(x402core, { signer });
+                this.x402http = new x402HTTPClient(x402core);
+                this.log(`X402 payment client initialized (supports CAIP-2 networks)`);
+
                 // Update wallet address in config if not set
                 if (!this.config.walletAddress) {
                     this.config.walletAddress = account.address;
@@ -340,38 +351,41 @@ export class SovereignArenaBattleSkill extends EventEmitter {
             return await this.api.request({ method, url, data });
         } catch (error: any) {
             // Check for 402 Payment Required
-            if (error.response?.status === 402 && this.walletClient) {
+            if (error.response?.status === 402 && this.x402http) {
                 this.log('💰 Payment Required - Processing X402 payment...');
 
-                // Extract payment requirements from response body (X402 standard)
-                const paymentRequirements = error.response.data?.paymentRequirements;
-                if (!paymentRequirements) {
-                    this.log('❌ 402 received but no paymentRequirements in response');
-                    throw error;
+                // Extract PaymentRequired response using x402HTTPClient
+                const paymentRequired = this.x402http.getPaymentRequiredResponse(
+                    (name: string) => error.response.headers[name.toLowerCase()],
+                    error.response.data
+                );
+
+                this.log(`X402 Version: ${paymentRequired.x402Version}`);
+                this.log(`Payment Options: ${paymentRequired.accepts.length}`);
+
+                // Log first payment option details
+                const firstOption = paymentRequired.accepts[0];
+                if (firstOption) {
+                    this.log(`Amount: ${(firstOption as any).amount || (firstOption as any).maxAmountRequired} ${firstOption.asset}`);
+                    this.log(`Network: ${firstOption.network}`);
+                    this.log(`Pay To: ${firstOption.payTo}`);
+                    this.log(`Description: ${paymentRequired.resource?.description || 'N/A'}`);
                 }
 
-                this.log(`Amount: ${paymentRequirements.maxAmountRequired} ${paymentRequirements.asset}`);
-                this.log(`Network: ${paymentRequirements.network}`);
-                this.log(`Pay To: ${paymentRequirements.payTo}`);
-                this.log(`Description: ${paymentRequirements.description}`);
+                // Create payment payload using x402HTTPClient
+                const paymentPayload = await this.x402http.createPaymentPayload(paymentRequired);
 
-                // Generate Payment Header using x402 library
-                const paymentHeader = await createPaymentHeader(
-                    this.walletClient,
-                    1, // x402 version
-                    paymentRequirements,
-                );
+                // Encode payment into HTTP headers
+                const paymentHeaders = this.x402http.encodePaymentSignatureHeader(paymentPayload);
 
                 this.log('✅ Payment proof generated. Retrying request...');
 
-                // Retry with X-Payment-Proof header
+                // Retry with payment headers
                 return await this.api.request({
                     method,
                     url,
                     data,
-                    headers: {
-                        'X-Payment-Proof': paymentHeader
-                    }
+                    headers: paymentHeaders
                 });
             }
             throw error;
