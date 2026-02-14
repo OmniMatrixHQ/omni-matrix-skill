@@ -342,30 +342,23 @@ export class SovereignArenaBattleSkill extends EventEmitter {
             if (error.response?.status === 402 && this.walletClient) {
                 this.log('💰 Payment Required - Processing X402 payment...');
 
-                // Extract payment details from response body (new format)
-                const payment = error.response.data?.payment;
-                if (!payment) {
-                    this.log('❌ 402 received but no payment details in body');
+                // Extract payment requirements from response body (X402 standard)
+                const paymentRequirements = error.response.data?.paymentRequirements;
+                if (!paymentRequirements) {
+                    this.log('❌ 402 received but no paymentRequirements in response');
                     throw error;
                 }
 
-                this.log(`Amount: ${payment.amount} ${payment.currency}`);
-                this.log(`Address: ${payment.address}`);
-                this.log(`Topic: ${payment.topic}`);
-
-                // Create payment requirements object for X402
-                const paymentReqs = {
-                    amount: payment.amount,
-                    currency: payment.currency,
-                    address: payment.address,
-                    topic: payment.topic,
-                };
+                this.log(`Amount: ${paymentRequirements.maxAmountRequired} ${paymentRequirements.asset}`);
+                this.log(`Network: ${paymentRequirements.network}`);
+                this.log(`Pay To: ${paymentRequirements.payTo}`);
+                this.log(`Description: ${paymentRequirements.description}`);
 
                 // Generate Payment Header using x402 library
                 const paymentHeader = await createPaymentHeader(
                     this.walletClient,
                     1, // x402 version
-                    paymentReqs,
+                    paymentRequirements,
                 );
 
                 this.log('✅ Payment proof generated. Retrying request...');
