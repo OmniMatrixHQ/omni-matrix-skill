@@ -172,6 +172,18 @@ export class SovereignArenaBattleSkill extends EventEmitter {
             payable: false,
             stateMutability: 'view',
             type: 'function'
+        },
+        {
+            constant: false,
+            inputs: [
+                { name: 'to', type: 'address' },
+                { name: 'value', type: 'uint256' }
+            ],
+            name: 'transfer',
+            outputs: [{ name: '', type: 'bool' }],
+            payable: false,
+            stateMutability: 'nonpayable',
+            type: 'function'
         }
     ] as const;
 
@@ -233,6 +245,30 @@ export class SovereignArenaBattleSkill extends EventEmitter {
 
         } catch (error: any) {
             this.log(`❌ WETH wrapping failed: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Transfer WETH to the arena wallet as payment
+     */
+    private async transferWETH(wethAddress: string, toAddress: string, amountEth: string): Promise<string> {
+        try {
+            const amountWei = parseEther(amountEth);
+
+            this.log(`💸 Transferring ${amountEth} WETH to ${toAddress}...`);
+
+            const hash = await this.walletClient.writeContract({
+                address: wethAddress as `0x${string}`,
+                abi: this.WETH_ABI,
+                functionName: 'transfer',
+                args: [toAddress as `0x${string}`, amountWei]
+            });
+
+            this.log(`✅ WETH payment sent! Tx: ${hash}`);
+            return hash;
+        } catch (error: any) {
+            this.log(`❌ WETH transfer failed: ${error.message}`);
             throw error;
         }
     }
@@ -466,7 +502,9 @@ export class SovereignArenaBattleSkill extends EventEmitter {
                 this.log(`X402 Version: ${paymentRequired.x402Version}`);
                 this.log(`Payment Options: ${paymentRequired.accepts.length}`);
 
-                // Log first payment option details
+                let paymentTxHash: string | null = null;
+
+                // Process first payment option
                 const firstOption = paymentRequired.accepts[0];
                 if (firstOption) {
                     const amount = (firstOption as any).amount || (firstOption as any).maxAmountRequired;
@@ -475,41 +513,34 @@ export class SovereignArenaBattleSkill extends EventEmitter {
                     this.log(`Pay To: ${firstOption.payTo}`);
                     this.log(`Description: ${paymentRequired.resource?.description || 'N/A'}`);
 
-                    // Auto-wrap ETH to WETH if needed
-                    // Use parseEther consistent amount (e.g. "0.00031")
-                    await this.ensureWETHBalance("0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2", amount.toString());
+                    const wethAddress = "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2";
+                    const amountStr = amount.toString();
 
-                    // If amount has decimal, convert to Wei for x402 payment payload
-                    if (amount.toString().includes('.')) {
-                        const amountWei = parseEther(amount.toString()).toString();
-                        (firstOption as any).amount = amountWei;
-                        this.log(`Converted amount to Wei: ${amountWei}`);
+                    // Step 1: Auto-wrap ETH to WETH if needed
+                    await this.ensureWETHBalance(wethAddress, amountStr);
+
+                    // Step 2: Transfer WETH to the arena wallet (actual on-chain payment)
+                    const payTo = firstOption.payTo;
+                    if (payTo) {
+                        paymentTxHash = await this.transferWETH(wethAddress, payTo, amountStr);
+                    } else {
+                        this.log(`⚠️  No payTo address found, cannot transfer`);
                     }
                 }
 
-                // Create payment payload using x402HTTPClient
-                const paymentPayload = await this.x402http.createPaymentPayload(paymentRequired);
-
-                // Encode payment into HTTP headers
-                const paymentHeaders = this.x402http.encodePaymentSignatureHeader(paymentPayload);
-
-                this.log('✅ Payment proof generated. Retrying request...');
-
-                // Debug: Log payment headers being sent
-                this.log(`📤 Payment Headers: ${JSON.stringify(Object.keys(paymentHeaders))}`);
-                for (const [key, value] of Object.entries(paymentHeaders)) {
-                    const val = typeof value === 'string' && value.length > 80
-                        ? value.substring(0, 80) + '...'
-                        : value;
-                    this.log(`   ${key}: ${val}`);
+                if (!paymentTxHash) {
+                    throw new Error('Payment transfer failed - no tx hash received');
                 }
 
-                // Retry with payment headers
+                this.log(`✅ Payment complete! Retrying join with tx hash...`);
+                this.log(`📤 X-Payment-TxHash: ${paymentTxHash}`);
+
+                // Retry with tx hash so backend can verify the on-chain transfer
                 return await this.api.request({
                     method,
                     url,
-                    data,
-                    headers: paymentHeaders
+                    data: { ...data, txHash: paymentTxHash },
+                    headers: { 'X-Payment-TxHash': paymentTxHash }
                 });
             }
             throw error;
