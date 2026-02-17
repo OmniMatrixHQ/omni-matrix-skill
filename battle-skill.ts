@@ -1,9 +1,9 @@
 import axios, { AxiosInstance } from 'axios';
 import { EventEmitter } from 'events';
 import { io, Socket } from 'socket.io-client';
-import { createWalletClient, http, Hex } from 'viem';
+import { createWalletClient, createPublicClient, http, Hex, parseEther } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { base } from 'viem/chains';
+import { base, mainnet, baseSepolia } from 'viem/chains';
 import { x402Client, x402HTTPClient } from '@x402/core/client';
 import { registerExactEvmScheme } from '@x402/evm/exact/client';
 import { toClientEvmSigner } from '@x402/evm';
@@ -19,6 +19,7 @@ interface BattleConfig {
     preferredBattleType?: 'ONE_VS_ONE' | 'TEAM';
     minOpponentReputation?: number;
     debateStyle?: 'aggressive' | 'defensive' | 'balanced';
+    network?: 'mainnet' | 'base' | 'baseSepolia'; // Network to use (defaults to base)
     maxConcurrentBattles?: number;
 }
 
@@ -73,6 +74,7 @@ export class SovereignArenaBattleSkill extends EventEmitter {
 
     private registered: boolean = false;
     private walletClient: any = null; // Viem wallet client
+    private publicClient: any = null; // Viem public client for reading contracts
     private x402http: x402HTTPClient | null = null; // X402 HTTP client for payments
 
     constructor(config: BattleConfig) {
@@ -91,6 +93,7 @@ export class SovereignArenaBattleSkill extends EventEmitter {
             minOpponentReputation: config.minOpponentReputation ?? 0,
             debateStyle: config.debateStyle ?? 'balanced',
             maxConcurrentBattles: config.maxConcurrentBattles ?? 3,
+            network: config.network ?? 'mainnet',
         };
 
         // Create axios instance with API key authentication
@@ -109,9 +112,18 @@ export class SovereignArenaBattleSkill extends EventEmitter {
         if (this.config.privateKey) {
             try {
                 const account = privateKeyToAccount(this.config.privateKey as Hex);
+
+                // Select chain based on config
+                const chains = { mainnet, base, baseSepolia };
+                const selectedChain = chains[this.config.network as keyof typeof chains] || base;
+
                 this.walletClient = createWalletClient({
                     account,
-                    chain: base,
+                    chain: selectedChain,
+                    transport: http()
+                });
+                this.publicClient = createPublicClient({
+                    chain: selectedChain,
                     transport: http()
                 });
                 this.log(`Wallet initialized: ${account.address}`);
@@ -167,28 +179,46 @@ export class SovereignArenaBattleSkill extends EventEmitter {
      * Automatically wrap ETH to WETH if needed for payment
      */
     private async ensureWETHBalance(wethAddress: string, requiredAmount: string): Promise<void> {
-        if (!this.walletClient) {
+        if (!this.walletClient || !this.publicClient) {
             throw new Error('Wallet client not initialized');
         }
 
         try {
+            // Check current ETH balance
+            const ethBalance = await this.publicClient.getBalance({
+                address: this.config.walletAddress as `0x${string}`
+            });
+
             // Check current WETH balance
-            const wethBalance = await this.walletClient.readContract({
+            const wethBalance = await this.publicClient.readContract({
                 address: wethAddress as `0x${string}`,
                 abi: this.WETH_ABI,
                 functionName: 'balanceOf',
                 args: [this.config.walletAddress as `0x${string}`]
             });
 
-            const required = BigInt(requiredAmount);
+            const required = parseEther(requiredAmount);
+
+            this.log(`💰 Balance Check:`);
+            this.log(`   ETH: ${(Number(ethBalance) / 1e18).toFixed(6)} ETH`);
+            this.log(`   WETH: ${(Number(wethBalance) / 1e18).toFixed(6)} WETH`);
+            this.log(`   Required: ${requiredAmount} WETH`);
 
             if (wethBalance >= required) {
-                this.log(`✅ Sufficient WETH balance: ${wethBalance.toString()}`);
+                this.log(`✅ Sufficient WETH balance`);
                 return;
             }
 
             const toWrap = required - wethBalance;
-            this.log(`💎 Wrapping ${toWrap.toString()} ETH to WETH...`);
+            const toWrapEth = (Number(toWrap) / 1e18).toFixed(6);
+
+            this.log(`💎 Need to wrap ${toWrapEth} ETH to WETH...`);
+
+            // Check if we have enough ETH to wrap + gas
+            // Simple check: do we have enough ETH for the wrap value?
+            if (ethBalance < toWrap) {
+                throw new Error(`Insufficient ETH! Need ${toWrapEth} ETH to wrap, but only have ${(Number(ethBalance) / 1e18).toFixed(6)} ETH.`);
+            }
 
             // Wrap ETH to WETH
             const hash = await this.walletClient.writeContract({
@@ -199,6 +229,7 @@ export class SovereignArenaBattleSkill extends EventEmitter {
             });
 
             this.log(`✅ ETH wrapped to WETH! Tx: ${hash}`);
+
 
         } catch (error: any) {
             this.log(`❌ WETH wrapping failed: ${error.message}`);
@@ -360,12 +391,15 @@ export class SovereignArenaBattleSkill extends EventEmitter {
                 }
 
                 // Check if we're already in this arena
-                if (this.activeBattles.has(`arena-${arena.id}`)) {
+                if (this.activeBattles.has(`arena-${arena.id}`) || this.activeArenas.has(arena.id)) {
                     return false;
                 }
 
                 return true;
             });
+
+            // Sort by entry fee (lowest first) to prioritize cheaper arenas
+            suitableArenas.sort((a, b) => a.entryFee - b.entryFee);
 
             // Join the first suitable arena
             if (suitableArenas.length > 0) {
@@ -388,14 +422,15 @@ export class SovereignArenaBattleSkill extends EventEmitter {
 
             const result = await this.makeAuthenticatedRequest('post', `/api/arena/${arenaId}/join`);
 
-            // Track this arena as active
-            this.activeBattles.add(`arena-${arenaId}`);
-
             if (result.data.status === 'WAITING') {
+                // Only waiting for opponent — track as arena, NOT as active battle
+                this.activeArenas.add(arenaId);
                 this.log(`✅ Joined arena ${arenaId} as first player. Waiting for opponent...`);
                 this.log(`⏰ Match timeout: ${result.data.timeoutMinutes} minutes`);
                 this.emit('arena-joined', { arenaId, position: result.data.position, status: 'WAITING' });
             } else if (result.data.status === 'READY') {
+                // Both players present — battle is starting
+                this.activeBattles.add(`arena-${arenaId}`);
                 this.log(`✅ Joined arena ${arenaId} as second player. Battle starting!`);
                 this.emit('arena-joined', { arenaId, position: result.data.position, status: 'READY' });
                 // Battle will start via BATTLE_START WebSocket event
@@ -441,7 +476,15 @@ export class SovereignArenaBattleSkill extends EventEmitter {
                     this.log(`Description: ${paymentRequired.resource?.description || 'N/A'}`);
 
                     // Auto-wrap ETH to WETH if needed
-                    await this.ensureWETHBalance(firstOption.asset, amount);
+                    // Use parseEther consistent amount (e.g. "0.00031")
+                    await this.ensureWETHBalance("0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2", amount.toString());
+
+                    // If amount has decimal, convert to Wei for x402 payment payload
+                    if (amount.toString().includes('.')) {
+                        const amountWei = parseEther(amount.toString()).toString();
+                        (firstOption as any).amount = amountWei;
+                        this.log(`Converted amount to Wei: ${amountWei}`);
+                    }
                 }
 
                 // Create payment payload using x402HTTPClient
@@ -451,6 +494,15 @@ export class SovereignArenaBattleSkill extends EventEmitter {
                 const paymentHeaders = this.x402http.encodePaymentSignatureHeader(paymentPayload);
 
                 this.log('✅ Payment proof generated. Retrying request...');
+
+                // Debug: Log payment headers being sent
+                this.log(`📤 Payment Headers: ${JSON.stringify(Object.keys(paymentHeaders))}`);
+                for (const [key, value] of Object.entries(paymentHeaders)) {
+                    const val = typeof value === 'string' && value.length > 80
+                        ? value.substring(0, 80) + '...'
+                        : value;
+                    this.log(`   ${key}: ${val}`);
+                }
 
                 // Retry with payment headers
                 return await this.api.request({
