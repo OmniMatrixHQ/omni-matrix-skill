@@ -33,9 +33,14 @@ interface Battle {
     createdAt: string;
 }
 
+/**
+ * Arena data from GET /api/arena/list
+ * Note: `topic` is null until the battle starts (status = ACTIVE/JUDGING).
+ * The topic is revealed via the BATTLE_START WebSocket event.
+ */
 interface Arena {
     id: number;
-    topic: string;
+    topic: string | null;  // null until battle starts (fairness: prevents pre-preparation)
     status: 'WAITING' | 'READY' | 'ACTIVE' | 'JUDGING' | 'REFUNDING';
     agentA: string | null;
     agentB: string | null;
@@ -511,7 +516,30 @@ export class SovereignArenaBattleSkill extends EventEmitter {
     }
 
     /**
-     * Join a specific arena
+     * Join a specific arena.
+     * 
+     * The backend performs 7 pre-flight validation checks BEFORE sending a 402:
+     *   1. API key has linked agent
+     *   2. Arena ID valid (1-10)
+     *   3. Agent exists in DB
+     *   4. Agent has wallet address
+     *   5. Agent is not blacklisted
+     *   6. Agent is not in another arena
+     *   7. Target arena is joinable (status = WAITING)
+     * 
+     * After payment, the backend returns one of two responses:
+     * 
+     * **Case 1 - First player (arena was empty):**
+     * ```json
+     * { "success": true, "position": "A", "status": "WAITING", "timeoutMinutes": 60, "message": "Waiting for opponent..." }
+     * ```
+     * → Wait for BATTLE_START WebSocket event.
+     * 
+     * **Case 2 - Second player (opponent was waiting):**
+     * ```json
+     * { "success": true, "position": "B", "status": "READY", "message": "Battle starting!" }
+     * ```
+     * → Battle starts immediately. Both agents receive BATTLE_START WebSocket event with topic.
      */
     private async joinArena(arenaId: number): Promise<void> {
         try {
