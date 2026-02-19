@@ -89,9 +89,21 @@ async function register() {
             }
 
             console.log('📋 Next steps:\n');
-            console.log('1. Add your OpenAI/Claude API key to .env');
-            console.log('2. Run: npm start');
-            console.log('3. Your bot will auto-join battles!\n');
+            console.log('1. Add your wallet\'s PRIVATE_KEY to .env (required for payments)');
+            console.log('   PRIVATE_KEY=0x_your_private_key_here\n');
+            console.log('2. Add an Ethereum RPC URL to .env (required for on-chain payments)');
+            console.log('   ETHEREUM_RPC_URL=https://mainnet.infura.io/v3/YOUR_PROJECT_ID');
+            console.log('   Get a free one at https://infura.io or https://alchemy.com\n');
+            console.log('3. Add your LLM API key to .env (at least one):');
+            console.log('   OPENAI_API_KEY=sk-your-openai-key');
+            console.log('   # or ANTHROPIC_API_KEY=sk-ant-your-key');
+            console.log('   # or GOOGLE_API_KEY=your-gemini-key\n');
+            console.log('4. (Optional) Configure battle preferences in .env:');
+            console.log('   MAX_ENTRY_FEE=0.01');
+            console.log('   DEBATE_STYLE=balanced    # aggressive | defensive | balanced');
+            console.log('   MAX_CONCURRENT_BATTLES=3\n');
+            console.log('5. Run: npm start');
+            console.log('6. Your bot will auto-join battles!\n');
             console.log('🏆 Good luck in the arena!\n');
 
         } else {

@@ -117,16 +117,37 @@ export class SovereignArenaBattleSkill extends EventEmitter {
                 const chains = { mainnet, base, baseSepolia };
                 const selectedChain = chains[this.config.network as keyof typeof chains] || base;
 
+                // Use explicit RPC URL if provided, otherwise use chain default
+                const rpcUrl = (this.config as any).rpcUrl || process.env.ETHEREUM_RPC_URL;
+                const transport = rpcUrl ? http(rpcUrl) : http();
+
+                this.log(`🔗 Chain: ${selectedChain.name} (ID: ${selectedChain.id})`);
+                if (!rpcUrl) {
+                    this.log(`⚠️  WARNING: No ETHEREUM_RPC_URL set! Using default public RPC.`);
+                    this.log(`   On-chain payments may fail. Set ETHEREUM_RPC_URL in your .env file.`);
+                    this.log(`   Example: ETHEREUM_RPC_URL=https://mainnet.infura.io/v3/YOUR_PROJECT_ID`);
+                } else {
+                    this.log(`🔗 RPC: ${rpcUrl.substring(0, 35)}...`);
+                }
+
+
                 this.walletClient = createWalletClient({
                     account,
                     chain: selectedChain,
-                    transport: http()
+                    transport,
                 });
                 this.publicClient = createPublicClient({
                     chain: selectedChain,
-                    transport: http()
+                    transport,
                 });
                 this.log(`Wallet initialized: ${account.address}`);
+
+                // Verify chain connection (fire-and-forget, constructor can't be async)
+                this.publicClient.getChainId().then((chainId: number) => {
+                    this.log(`✅ Connected to chain ID: ${chainId}`);
+                }).catch((e: any) => {
+                    this.log(`⚠️  Could not verify chain connection: ${e.message}`);
+                });
 
                 // Initialize x402 HTTP client with EVM support
                 const signer = toClientEvmSigner(account);
@@ -240,6 +261,15 @@ export class SovereignArenaBattleSkill extends EventEmitter {
                 value: toWrap
             });
 
+            this.log(`⏳ Wrap tx sent: ${hash} — waiting for confirmation...`);
+
+            // Wait for confirmation before proceeding
+            await this.publicClient.waitForTransactionReceipt({
+                hash,
+                confirmations: 1,
+                timeout: 120_000,
+            });
+
             this.log(`✅ ETH wrapped to WETH! Tx: ${hash}`);
 
 
@@ -256,7 +286,15 @@ export class SovereignArenaBattleSkill extends EventEmitter {
         try {
             const amountWei = parseEther(amountEth);
 
-            this.log(`💸 Transferring ${amountEth} WETH to ${toAddress}...`);
+            // Debug: log chain and wallet details
+            const chainId = await this.publicClient.getChainId();
+            const senderAddr = this.walletClient.account.address;
+            const nonce = await this.publicClient.getTransactionCount({ address: senderAddr });
+            this.log(`� DEBUG - Chain ID: ${chainId}, Sender: ${senderAddr}, Nonce: ${nonce}`);
+            this.log(`🔍 DEBUG - WETH Contract: ${wethAddress}`);
+            this.log(`🔍 DEBUG - Transfer: ${amountEth} WETH (${amountWei.toString()} wei) → ${toAddress}`);
+
+            this.log(`�💸 Transferring ${amountEth} WETH to ${toAddress}...`);
 
             const hash = await this.walletClient.writeContract({
                 address: wethAddress as `0x${string}`,
@@ -265,7 +303,30 @@ export class SovereignArenaBattleSkill extends EventEmitter {
                 args: [toAddress as `0x${string}`, amountWei]
             });
 
-            this.log(`✅ WETH payment sent! Tx: ${hash}`);
+            this.log(`⏳ Tx hash: ${hash} — checking if broadcast...`);
+
+            // Debug: immediately try to get the tx from the node
+            try {
+                const tx = await this.publicClient.getTransaction({ hash });
+                this.log(`🔍 DEBUG - Tx found on node! From: ${tx.from}, To: ${tx.to}, ChainId: ${tx.chainId}`);
+            } catch (txErr: any) {
+                this.log(`⚠️  DEBUG - Tx NOT found on node immediately: ${txErr.message}`);
+            }
+
+            this.log(`⏳ Waiting for confirmation...`);
+
+            // Wait for the transaction to be mined (1 confirmation)
+            const receipt = await this.publicClient.waitForTransactionReceipt({
+                hash,
+                confirmations: 1,
+                timeout: 120_000, // 2 minute timeout
+            });
+
+            if (receipt.status === 'reverted') {
+                throw new Error(`Transaction reverted on-chain: ${hash}`);
+            }
+
+            this.log(`✅ WETH payment confirmed! Tx: ${hash} (block ${receipt.blockNumber})`);
             return hash;
         } catch (error: any) {
             this.log(`❌ WETH transfer failed: ${error.message}`);

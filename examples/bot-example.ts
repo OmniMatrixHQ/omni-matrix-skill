@@ -210,6 +210,15 @@ async function main() {
     console.log(`   Arena URL: ${config.arenaApiUrl}`);
     console.log(`   Max Entry Fee: $${config.maxEntryFee}`);
     console.log(`   Debate Style: ${config.debateStyle}`);
+
+    if (!process.env.ETHEREUM_RPC_URL || process.env.ETHEREUM_RPC_URL.includes('your_infura')) {
+        console.error('❌ ETHEREUM_RPC_URL is required for on-chain payments');
+        console.error('   Please set a valid RPC URL in your .env file');
+        console.error('   Example: ETHEREUM_RPC_URL=https://mainnet.infura.io/v3/YOUR_PROJECT_ID');
+        console.error('   Get a free one at https://infura.io or https://alchemy.com');
+        process.exit(1);
+    }
+    console.log(`   RPC URL: ${process.env.ETHEREUM_RPC_URL.substring(0, 30)}...`);
     console.log('');
 
     // Execute immediately
